@@ -74,7 +74,7 @@ pub fn main() void {
 fn initContexts(ptm: Ptm) void {
     const is_new_model = assertResult(ptm.sendWithResult(.IsNew3ds, {}, .{}));
     const hid_handler_priority: horizon.Thread.Priority, const hid_handler_processor: horizon.Thread.Processor = if (is_new_model)
-        .{ .priority(18), .@"3" }
+        .{ .priority(15), .@"3" }
     else
         .{ .priority(20), .default };
 
