@@ -530,7 +530,7 @@ fn initDevice(codec: *Codec, cal: *Calibration) void {
     assertResult(codec.spi.sendWithResult(.InitDeviceWithRate, .init(.dsi_tsc, .@"4Mhz"), .{}));
     assertResult(codec.spi.sendWithResult(.InitDeviceWithRate, .init(.@"3ds_tsc", .@"4Mhz"), .{}));
 
-    assertResult(codec.spi.sendWithResult(.EnableNewBusWithRate, .init(.power_management, true, .@"1Mhz"), .{}));
+    assertResult(codec.spi.sendWithResult(.EnableNewBusWithRate, .init(.power_management, true, .@"2Mhz"), .{}));
     assertResult(codec.spi.sendWithResult(.EnableNewBusWithRate, .init(.@"3ds_tsc", true, .@"16Mhz"), .{}));
 
     assertResult(codec.pdn.sendWithResult(.SetEnabled2, true, .{}));
