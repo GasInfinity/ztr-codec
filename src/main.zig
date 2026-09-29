@@ -8,6 +8,19 @@ pub const zitrus_options: zitrus.Options = .{
     },
 };
 
+const service_names: []const []const u8 = &.{ "cdc:HID", "cdc:MIC", "cdc:CSN", "cdc:DSP", "cdc:LGY", "cdc:CHK" };
+const State = horizon.module.State(
+&.{
+        .shell_opened,
+        .shell_closed,
+        .entering_sleep,
+        .waking_up,
+    },
+    service_names,
+    &@splat(.unhandled),
+    &@splat(1),
+);
+
 pub fn main() void {
     env.arbiter = assertResult(horizon.createAddressArbiter());
     defer env.arbiter.close();
@@ -17,18 +30,10 @@ pub fn main() void {
 
     assertResult(srv.sendWithResult(.RegisterClient, .{}, .{}));
 
-    var handles: [1 + service_names.len]horizon.Synchronization = undefined;
-    var ports: std.ArrayList(Port.Server) = .initBuffer(@ptrCast(handles[1..][0..service_names.len]));
-    defer for (ports.items) |port| port.close();
+    var state: State = .empty;
 
-    handles[0] = @bitCast(assertResult(srv.sendWithResult(.EnableNotification, {}, .{})));
-    defer handles[0].close();
-
-    for (service_names) |name| ports.appendAssumeCapacity(assertResult(srv.sendWithResult(.RegisterService, .init(name, 1), .{})).wrapped);
-    defer for (service_names) |name| assertResult(srv.sendWithResult(.UnregisterService, .embedded(name), .{}));
-
-    for (subscribed_notifications) |notification| assertResult(srv.sendWithResult(.Subscribe, notification, .{}));
-    defer for (subscribed_notifications) |notification| assertResult(srv.sendWithResult(.Unsubscribe, notification, .{}));
+    state.initServices(srv);
+    defer state.deinitServices(srv);
 
     const ptm: Ptm = assertResult(Ptm.openWithResult(srv, .system));
     defer ptm.close();
@@ -43,10 +48,8 @@ pub fn main() void {
 
     var running = true;
     while (running) {
-        const idx: u32 = assertResult(horizon.waitSynchronizationMultiple(handles[0 .. 1 + ports.items.len], false, .none));
-
-        switch (idx) {
-            0 => switch (assertResult(srv.sendWithResult(.ReceiveNotification, {}, .{}))) {
+        switch (state.next(srv)) {
+            .notification => |id| switch (id) {
                 .must_terminate => running = false,
                 .shell_opened => codec.shellOpened(),
                 .shell_closed => codec.shellClosed(),
@@ -60,13 +63,8 @@ pub fn main() void {
                 },
                 else => {},
             },
-            ports_begin...ports_end => {
-                const port_idx = idx - ports_begin;
-                const port = ports.items[port_idx];
-
-                env.ctx[port_idx].acceptSession(assertResult(horizon.acceptSession(port)));
-            },
-            else => unreachable,
+            .handled_session_accepted, .handled_session_request, .handled_session_closed => unreachable,
+            .unhandled_session_accepted => |r| env.ctx[@intFromEnum(r.port)].acceptSession(r.session)
         }
     }
 }
@@ -302,7 +300,6 @@ fn chkHandler(session: horizon.Session.Server) void {
 const assertResult = ErrorDisplayManager.assertResult;
 const assertCode = ErrorDisplayManager.assertCode;
 
-const service_names: []const []const u8 = &.{ "cdc:HID", "cdc:MIC", "cdc:CSN", "cdc:DSP", "cdc:LGY", "cdc:CHK" };
 const service_handlers: []const *const fn (session: horizon.Session.Server) void = &.{
     &hidHandler,
     &micHandler,
